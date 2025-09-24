@@ -122,28 +122,31 @@ export class ChatService {
     const headers = new HttpHeaders({ 'Content-Type': 'application/json' });
     return this.http.post<SendMessageResponse>(url, req, { headers }).pipe(
       tap((res) => {
+        // Defensive: some backends may wrap data or return plain text
+        const normalized = this.normalizeSendResponse(res as any);
+
         // Merge response: ensure conversation exists
-        const active = this.conversations$.value.find((c) => c.id === res.conversationId);
+        const active = this.conversations$.value.find((c) => c.id === normalized.conversationId);
         let working = active ?? conv;
 
-        // If backend returns full messages, replace; otherwise append assistant message.
-        if (res.messages && res.messages.length > 0) {
+        // If backend returns full messages, replace; otherwise keep optimistic user message
+        if (normalized.messages && normalized.messages.length > 0) {
           working = {
             ...working,
-            messages: res.messages,
+            messages: normalized.messages,
             updatedAt: new Date().toISOString(),
           };
         }
 
         // If moderation info present and applies to last user message, attach to it.
-        if (res.moderation && working.messages.length > 0) {
+        if (normalized.moderation && working.messages.length > 0) {
           const lastUserIndex = [...working.messages]
             .reverse()
             .findIndex((m) => m.role === 'user');
           if (lastUserIndex !== -1) {
             const idx = working.messages.length - 1 - lastUserIndex;
             const updated = working.messages.map((m, i) =>
-              i === idx ? { ...m, moderation: res.moderation } : m
+              i === idx ? { ...m, moderation: normalized.moderation } : m
             );
             working = { ...working, messages: updated };
           }
@@ -154,6 +157,8 @@ export class ChatService {
       }),
       map(() => this.activeConversation$.value!),
       catchError((err: HttpErrorResponse) => {
+        // Ensure loading is reset on error
+        this.loading$.next(false);
         this.lastError$.next(this.humanizeHttpError(err));
         // Rollback optimistic user message by removing last if assistant failed
         const rollback = this.activeConversation$.value;
@@ -252,8 +257,89 @@ export class ChatService {
   }
 
   private humanizeHttpError(err: any): string {
-    if (err && err.error && typeof err.error === 'string') return err.error;
-    if (err && err.status) return `Request failed (${err.status})`;
+    try {
+      // Handle Angular HttpErrorResponse
+      if (err && typeof err === 'object' && 'status' in err) {
+        const he = err as HttpErrorResponse;
+
+        // If backend returned a string error body, prefer it
+        if (typeof he.error === 'string' && he.error.trim()) {
+          return he.error;
+        }
+
+        // If backend returned JSON with message field
+        if (he.error && typeof he.error === 'object' && typeof he.error.message === 'string') {
+          return he.error.message;
+        }
+
+        // If status is 0, it is often a network or CORS error
+        if (he.status === 0) {
+          return 'Network error or CORS blocked the request.';
+        }
+
+        // Some setups wrongly throw even on 200 with unexpected parse; make clearer
+        if (he.status === 200) {
+          return 'Received unexpected response format (200).';
+        }
+
+        // Fallback to status text or code
+        if (he.status) {
+          return he.statusText ? `${he.statusText} (${he.status})` : `Request failed (${he.status})`;
+        }
+      }
+
+      // Non-HttpErrorResponse: try to stringify meaningful message
+      if (err && typeof err.message === 'string') {
+        return err.message;
+      }
+      if (typeof err === 'string') {
+        return err;
+      }
+    } catch {
+      // ignore
+    }
     return 'An unexpected error occurred.';
+  }
+
+  /**
+   * Normalize different backend response shapes for sendMessage endpoint.
+   * Accepts:
+   * - Proper SendMessageResponse
+   * - Wrapped { data: SendMessageResponse }
+   * - Plain text assistant message (fallback)
+   */
+  private normalizeSendResponse(res: any): SendMessageResponse {
+    // Proper shape
+    if (res && typeof res === 'object' && 'conversationId' in res) {
+      return res as SendMessageResponse;
+    }
+    // Wrapped in data
+    if (res && typeof res === 'object' && 'data' in res && res.data && typeof res.data === 'object') {
+      const data = res.data;
+      if ('conversationId' in data) {
+        return data as SendMessageResponse;
+      }
+    }
+    // If string, treat as assistant reply only
+    if (typeof res === 'string') {
+      const conversationId = this.activeConversation$.value?.id ?? this.generateId();
+      return {
+        conversationId,
+        messages: [
+          ...(this.activeConversation$.value?.messages ?? []),
+          {
+            id: this.generateId(),
+            role: 'assistant',
+            content: res,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+    // Unknown shape: return passthrough with current conversation id, no messages
+    return {
+      conversationId: this.activeConversation$.value?.id ?? this.generateId(),
+      messages: this.activeConversation$.value?.messages ?? [],
+    };
   }
 }
