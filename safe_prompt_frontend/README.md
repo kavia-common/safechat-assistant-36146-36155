@@ -29,7 +29,9 @@ By default, the frontend calls the backend at `/api`. You can override at runtim
 Endpoints expected:
 - POST /chat/send
   - Body: { conversationId?: string, content: string }
-  - Returns: { conversationId: string, messages: ChatMessage[], moderation?: ModerationInfo }
+  - Returns (supported shapes):
+    - Minimal: { "chat": string, "moderation": boolean }
+    - Or: { conversationId: string, messages: ChatMessage[], moderation?: ModerationInfo }
 - GET /chat/history (optional)
   - Returns: ChatSummary[]
 - GET /chat/conversation/:id (optional)

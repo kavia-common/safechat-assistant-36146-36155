@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { ChatMessage, Conversation, SendMessageRequest, SendMessageResponse, ChatSummary } from '../models/chat.models';
+import { ChatMessage, Conversation, SendMessageRequest, SendMessageResponse, ChatSummary, MinimalChatApiResponse } from '../models/chat.models';
 
 /**
  * ChatService handles communication with the backend API and provides
@@ -120,10 +120,10 @@ export class ChatService {
     this.updateConversation(conv);
 
     const headers = new HttpHeaders({ 'Content-Type': 'application/json' });
-    return this.http.post<SendMessageResponse>(url, req, { headers }).pipe(
-      tap((res) => {
-        // Defensive: some backends may wrap data or return plain text
-        const normalized = this.normalizeSendResponse(res as any);
+    return this.http.post<any>(url, req, { headers }).pipe(
+      tap((resRaw) => {
+        // Normalize backend response supporting { chat: string, moderation: boolean }
+        const normalized = this.normalizeSendResponse(resRaw as any);
 
         // Merge response: ensure conversation exists
         const active = this.conversations$.value.find((c) => c.id === normalized.conversationId);
@@ -304,27 +304,63 @@ export class ChatService {
   /**
    * Normalize different backend response shapes for sendMessage endpoint.
    * Accepts:
+   * - MinimalChatApiResponse: { chat: string, moderation: boolean }
    * - Proper SendMessageResponse
-   * - Wrapped { data: SendMessageResponse }
+   * - Wrapped { data: ... }
    * - Plain text assistant message (fallback)
    */
   private normalizeSendResponse(res: any): SendMessageResponse {
-    // Proper shape
+    const currentConvId = this.activeConversation$.value?.id ?? this.generateId();
+
+    // Case 1: New minimal API { chat: string, moderation: boolean }
+    if (res && typeof res === 'object' && 'chat' in res && 'moderation' in res) {
+      const m = res as MinimalChatApiResponse;
+
+      // Create assistant message from chat text
+      const assistantMessage: ChatMessage = {
+        id: this.generateId(),
+        role: 'assistant',
+        content: String(m.chat ?? ''),
+        createdAt: new Date().toISOString(),
+        // We also reflect moderation onto the assistant message as informational
+        moderation: m.moderation ? { moderated: true, reason: 'Safety filter', details: 'Response marked by moderation.' } : undefined,
+      };
+
+      // Build moderation info for user input if applicable
+      const moderationInfo = m.moderation ? { moderated: true, reason: 'Safety filter' } : undefined;
+
+      return {
+        conversationId: currentConvId,
+        messages: [
+          ...(this.activeConversation$.value?.messages ?? []),
+          assistantMessage,
+        ],
+        moderation: moderationInfo,
+      };
+    }
+
+    // Case 2: Proper shape
     if (res && typeof res === 'object' && 'conversationId' in res) {
       return res as SendMessageResponse;
     }
-    // Wrapped in data
+
+    // Case 3: Wrapped in data
     if (res && typeof res === 'object' && 'data' in res && res.data && typeof res.data === 'object') {
       const data = res.data;
+      // Try minimal inside data
+      if ('chat' in data && 'moderation' in data) {
+        return this.normalizeSendResponse(data);
+      }
+      // Or proper inside data
       if ('conversationId' in data) {
         return data as SendMessageResponse;
       }
     }
-    // If string, treat as assistant reply only
+
+    // Case 4: If string, treat as assistant reply only
     if (typeof res === 'string') {
-      const conversationId = this.activeConversation$.value?.id ?? this.generateId();
       return {
-        conversationId,
+        conversationId: currentConvId,
         messages: [
           ...(this.activeConversation$.value?.messages ?? []),
           {
@@ -336,9 +372,10 @@ export class ChatService {
         ],
       };
     }
+
     // Unknown shape: return passthrough with current conversation id, no messages
     return {
-      conversationId: this.activeConversation$.value?.id ?? this.generateId(),
+      conversationId: currentConvId,
       messages: this.activeConversation$.value?.messages ?? [],
     };
   }

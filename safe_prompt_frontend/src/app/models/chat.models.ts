@@ -61,3 +61,11 @@ export interface Conversation {
   messages: ChatMessage[];
   updatedAt: string;
 }
+
+// PUBLIC_INTERFACE
+export interface MinimalChatApiResponse {
+  /** Assistant reply text returned by backend under "chat". */
+  chat: string;
+  /** Whether moderation was triggered; backend returns boolean under "moderation". */
+  moderation: boolean;
+}
