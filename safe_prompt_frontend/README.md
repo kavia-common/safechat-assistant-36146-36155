@@ -1,59 +1,45 @@
-# Angular
+# Safe Prompt Frontend (Angular)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.1.
+Angular 19 standalone application implementing an Ocean Professional themed chat UI with:
+- Responsive layout
+- Sidebar chat history
+- Central conversation panel
+- Input with enter-to-send
+- Moderation feedback badges
+- Backend API integration
 
-## Development server
+## Development
 
-To start a local development server, run:
-
+Start dev server:
 ```bash
-ng serve
+npm install
+npm start
+```
+Open http://localhost:3000
+
+## API configuration
+
+By default, the frontend calls the backend at `/api`. You can override at runtime by setting a global before the app loads:
+```html
+<script>
+  window.__APP_API_BASE_URL__ = 'https://your-backend.example.com';
+</script>
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Endpoints expected:
+- POST /chat/send
+  - Body: { conversationId?: string, content: string }
+  - Returns: { conversationId: string, messages: ChatMessage[], moderation?: ModerationInfo }
+- GET /chat/history (optional)
+  - Returns: ChatSummary[]
+- GET /chat/conversation/:id (optional)
+  - Returns: Conversation
 
-## Code scaffolding
+## Theming
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Ocean Professional theme uses blue and amber accents with subtle gradients, shadows, and rounded corners. Global styles are set in `src/styles.css` and components include scoped styles.
 
-```bash
-ng generate component component-name
-```
+## Notes
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+- SSR bootstrap signature complies with Angular 19 SSR expectations.
+- All `@angular/*` package versions are aligned to avoid build issues.

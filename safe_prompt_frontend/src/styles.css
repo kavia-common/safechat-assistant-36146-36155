@@ -1,12 +1,22 @@
-/* Global styles for minimalistic design */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* Ocean Professional global styles */
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
   height: 100%;
-  background-color: #ffffff;
+  background: #f9fafb; /* background */
+  color: #111827; /* text */
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+a { color: #2563EB; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button { font-family: inherit; }
+input, textarea { font-family: inherit; }
+
+::selection { background: rgba(37,99,235,.2); }
+
+.fade-enter { opacity: 0; transform: translateY(4px); }
+.fade-enter-active { opacity: 1; transform: translateY(0); transition: all .15s ease; }
